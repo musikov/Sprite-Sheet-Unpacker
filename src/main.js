@@ -1,41 +1,80 @@
 function main() {
+    var log = function(data) {
+        document.getElementById('list').innerHTML += "<br/>" + data;
+    };
+    var zipDownload = true;
+    var alternateDownloader = true;
     function fileName(path) {
         return path.substr(0, path.lastIndexOf('.')) || path
     }
     var button = document.getElementById("downloadButton");
     button.onclick = function(event) {
-        var zip = new JSZip();
+        if (zipDownload) {
+            var zip = new JSZip();
+        }
 
-        var addSpriteToFolder = function(sprite, folder, name) {
-            var bounds = sprite.getBounds();
-            sprite.cache(0, 0, bounds.width, bounds.height, 0);
-            var data = sprite.getCacheDataURL();
-            data = data.substr(data.indexOf(',') + 1);
-            folder.file(name + ".png", data, {base64: true});
+        var canvas = document.createElement("canvas");
+        var context = canvas.getContext("2d");
+
+        var extractSpriteFrame = function(spriteSheet, animation, frameNumber) {
+            frameNumber = frameNumber || 0;
+
+            var frame = spriteSheet.getAnimation(animation).frames[frameNumber];
+
+            var data = spriteSheet.getFrame(frame);
+
+            if (!data) { return null; }
+
+            var r = data.rect;
+
+            canvas.width = r.width - data.regX * 2;
+
+            canvas.height = r.height - data.regY * 2;
+
+            context.drawImage(data.image, r.x, r.y, r.width, r.height, -data.regX, -data.regY, r.width, r.height);
+
+            var img = document.createElement("img");
+
+            img.src = canvas.toDataURL("image/png");
+
+            return img;
+        };
+        var addImageToFolder = function(img, folder, name) {
+            var data = img.src;
+
+            if (zipDownload) {
+                data = data.substr(data.indexOf(',') + 1);
+                folder.file(name + ".png", data, {base64: true});
+            }
+            else {
+                download(data, name + ".png");
+            }
+
             sprite.uncache();
         };
 
         for (var s in spriteSheets) {
             var res = spriteSheets[s];
-            var folder = zip.folder(s);
+            if (zipDownload) {
+                var folder = zip.folder(s);
+            }
             for (var i = 0, len = res._animations.length; i < len; ++i) {
                 var name = res._animations[i];
 
                 var sprite = new createjs.Sprite(res, name);
                 if (sprite._animation.frames.length > 1) {
-                    var localFolder = folder.folder(name);
                     for (var f = 0; f < sprite._animation.frames.length; ++f) {
                         sprite._goto(name, f);
-                        addSpriteToFolder(sprite, localFolder, f);
+                        addImageToFolder(extractSpriteFrame(res, name, f), folder, name + '/' + f);
                     }
                 }
                 else {
-                    addSpriteToFolder(sprite, folder, name);
+                    addImageToFolder(extractSpriteFrame(res, name, 0), folder, name);
                 }
             }
         }
 
-        var download = function(data, name) {
+        function download(data, name) {
             var link = document.createElement("a");
             link.href = data;
             link.download = name;
@@ -49,10 +88,18 @@ function main() {
             document.body.appendChild(link);
             link.dispatchEvent(evt);
             document.body.removeChild(link);
-            console.log("Downloading... " + name );
-        };
-        var content = "data:application/zip;base64," + zip.generate({type:"base64"});
-        download(content, 'spritesheet.zip');
+            log("Downloading... " + name );
+        }
+        if (zipDownload) {
+            if (alternateDownloader) {
+                var content = zip.generate({type:"blob"});
+                saveAs(content, 'spritesheet.zip');
+            }
+            else {
+                var content = "data:application/zip;base64," + zip.generate({type:"base64"});
+                download(content, 'spritesheet.zip');
+            }
+        }
     };
 
 
@@ -69,7 +116,7 @@ function main() {
     var readJSONS = function(jsons, callback) {
         var callbacks = jsons.length;
         var totalCallback = function(f) {
-            console.log("done " + f.name);
+            log("done " + f.name);
             if (!--callbacks) {
                 if (callback) {
                     callback();
@@ -77,7 +124,7 @@ function main() {
             }
         };
         jsons.forEach(function(json) {
-            console.log("loading " + json.name);
+            log("loading " + json.name);
             readJSON(json, totalCallback);
         })
     };
@@ -95,7 +142,7 @@ function main() {
                             return loadedImages[loadedImageName]
                         }
                     }
-                    console.log("NOT FOUND " + imageName);
+                    log("NOT FOUND " + imageName);
                     return imageName
                 });
             }
@@ -115,7 +162,7 @@ function main() {
     var readImages = function(images, callback) {
         var callbacks = images.length;
         var totalCallback = function(f) {
-            console.log("done " + f.name);
+            log("done " + f.name);
             if (!--callbacks) {
                 if (callback) {
                     callback();
@@ -123,7 +170,7 @@ function main() {
             }
         };
         images.forEach(function(image) {
-            console.log("loading " + image.name);
+            log("loading " + image.name);
             readImage(image, totalCallback);
         })
     };
@@ -143,6 +190,7 @@ function main() {
     };
 
     function handleFileSelect(evt) {
+        document.getElementById('list').innerHTML = "";
         jsons = [];
         loadedImages = {};
         spriteSheets = {};
@@ -168,7 +216,6 @@ function main() {
             readJSONS(localJSONS);
         });
 
-        document.getElementById('list').innerHTML = '<ul>' + output.join('') + '</ul>';
     }
     document.getElementById('files').addEventListener('change', handleFileSelect, false);
 }
