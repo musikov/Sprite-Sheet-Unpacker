@@ -3,6 +3,31 @@
 <head lang="en">
     <meta charset="UTF-8">
     <title></title>
+    <style>
+        div.preview {
+            border: 1px solid black;
+        }
+        div.atlas {
+            position: relative;
+        }
+        div.respect-layout div.atlas {
+            border: 1px solid black;
+        }
+        div:not(.respect-layout) div.atlas {
+            width: 100%!important;
+            height: auto!important;
+        }
+        div.preview.respect-layout div.atlas > canvas {
+            position: absolute;
+        }
+        div.preview:not(.respect-layout) div.atlas > canvas {
+            margin: 0!important;
+            top: auto!important;
+            left: auto!important;
+            display: inline!important;
+            border: 1px solid black;
+        }
+    </style>
 </head>
 <body>
 <script src="src/createjs-2015.11.26.combined.js"></script>
@@ -12,7 +37,13 @@
 <input id="files" type="file" multiple>
 <br/>
 <button id="downloadButton">download</button>
+<br/>
 <output id="list"></output>
 <br/>
+Preview
+<br/>
+<label>Respect spritesheet layout<input id="layoutCheckbox" type="checkbox"></label>
+<div class="preview">
+</div>
 </body>
 </html>

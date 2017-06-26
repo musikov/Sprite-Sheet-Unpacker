@@ -1,76 +1,50 @@
 function main() {
+    let previewDiv = document.getElementsByClassName('preview')[0];
+    document.getElementById('layoutCheckbox').onclick = function() {
+        if (this.checked) {
+            previewDiv.classList.add('respect-layout');
+        } else {
+            previewDiv.classList.remove('respect-layout');
+        }
+    };
+
     var log = function(data) {
         document.getElementById('list').innerHTML += "<br/>" + data;
     };
     var zipDownload = true;
     var alternateDownloader = true;
+
     function fileName(path) {
         return path.substr(0, path.lastIndexOf('.')) || path
     }
+
     var button = document.getElementById("downloadButton");
     button.onclick = function(event) {
         if (zipDownload) {
             var zip = new JSZip();
         }
 
-        var canvas = document.createElement("canvas");
-        var context = canvas.getContext("2d");
-
-        var extractSpriteFrame = function(spriteSheet, animation, frameNumber) {
-            frameNumber = frameNumber || 0;
-
-            var frame = spriteSheet.getAnimation(animation).frames[frameNumber];
-
-            var data = spriteSheet.getFrame(frame);
-
-            if (!data) { return null; }
-
-            var r = data.rect;
-
-            canvas.width = r.width - data.regX * 2;
-
-            canvas.height = r.height - data.regY * 2;
-
-            context.drawImage(data.image, r.x, r.y, r.width, r.height, -data.regX, -data.regY, r.width, r.height);
-
-            var img = document.createElement("img");
-
-            img.src = canvas.toDataURL("image/png");
-
-            return img;
-        };
         var addImageToFolder = function(img, folder, name) {
             var data = img.src;
 
             if (zipDownload) {
                 data = data.substr(data.indexOf(',') + 1);
                 folder.file(name + ".png", data, {base64: true});
-            }
-            else {
+            } else {
                 download(data, name + ".png");
             }
-
-            sprite.uncache();
         };
 
         for (var s in spriteSheets) {
-            var res = spriteSheets[s];
             if (zipDownload) {
-                var folder = zip.folder(s);
+                var folder = zip.folder(fileName(s));
             }
-            for (var i = 0, len = res._animations.length; i < len; ++i) {
-                var name = res._animations[i];
-
-                var sprite = new createjs.Sprite(res, name);
-                if (sprite._animation.frames.length > 1) {
-                    for (var f = 0; f < sprite._animation.frames.length; ++f) {
-                        sprite._goto(name, f);
-                        addImageToFolder(extractSpriteFrame(res, name, f), folder, name + '/' + f);
-                    }
-                }
-                else {
-                    addImageToFolder(extractSpriteFrame(res, name, 0), folder, name);
-                }
+            var spriteSheet = spriteSheets[s];
+            for (var name in spriteSheet) {
+                var canvas = spriteSheet[name];
+                var img = new Image();
+                img.src = canvas.toDataURL("image/png");
+                addImageToFolder(img, folder, name);
             }
         }
 
@@ -88,26 +62,19 @@ function main() {
             document.body.appendChild(link);
             link.dispatchEvent(evt);
             document.body.removeChild(link);
-            log("Downloading... " + name );
+            log("Downloading... " + name);
         }
+
         if (zipDownload) {
             if (alternateDownloader) {
-                var content = zip.generate({type:"blob"});
+                var content = zip.generate({type: "blob"});
                 saveAs(content, 'spritesheet.zip');
-            }
-            else {
-                var content = "data:application/zip;base64," + zip.generate({type:"base64"});
+            } else {
+                var content = "data:application/zip;base64," + zip.generate({type: "base64"});
                 download(content, 'spritesheet.zip');
             }
         }
     };
-
-
-    var extractSpriteSheets = function() {
-
-    };
-
-    var preloader = new createjs.LoadQueue();
 
     var jsons = [];
     var loadedImages = {};
@@ -135,25 +102,185 @@ function main() {
         reader.onload = function(e) {
             var json = JSON.parse(e.target.result);
             jsons.push(json);
-            if (json.images) {
-                json.images = json.images.map(function(imageName, idx) {
-                    for (var loadedImageName in loadedImages) {
-                        if (imageName.indexOf(loadedImageName) != -1) {
-                            return loadedImages[loadedImageName]
+
+            new Promise((res, rej) => {
+                const egretParser = function(json) {
+                    const isEgret = function(json) {
+                        if (!json.file) return false;
+                        if (!json.frames) return false;
+                        for (let name in json.frames) {
+                            if (!json.frames.hasOwnProperty(name)) continue;
+                            let frame = json.frames[name];
+                            if (!(('x' in frame) && ('y' in frame) && ('w' in frame) && ('h' in frame)))
+                                return false;
+                        }
+                        return true;
+                    };
+                    if (!isEgret(json)) return null;
+                    let ret = {};
+                    ret.filename = json.file;
+                    ret.frames = {};
+                    for (let framename in json.frames) {
+                        if (!json.frames.hasOwnProperty(framename)) continue;
+                        let frame = json.frames[framename];
+                        ret.frames[framename] = {
+                            x: frame.x,
+                            y: frame.y,
+                            w: frame.w,
+                            h: frame.h,
+                            offX: frame.offX,
+                            offY: frame.offY,
+                            sourceW: frame.sourceW,
+                            sourceH: frame.sourceH
                         }
                     }
-                    log("NOT FOUND " + imageName);
-                    return imageName
+                    return ret;
+                };
+                const pixiParser = function(json) {
+                    const isPixi = function(json) {
+                        /*
+                         "frame": {
+                         "x": 159,
+                         "y": 1,
+                         "w": 54,
+                         "h": 53
+                         },
+                         "rotated": false,
+                         "trimmed": false,
+                         "spriteSourceSize": {
+                         "x": 0,
+                         "y": 0,
+                         "w": 54,
+                         "h": 53
+                         },
+                         "sourceSize": {
+                         "w": 54,
+                         "h": 53
+                         }
+                         */
+                        if (!json.frames) return false;
+                        for (let name in json.frames) {
+                            if (!json.frames.hasOwnProperty(name)) continue;
+                            let frame = json.frames[name];
+                            if (0
+                                || !('frame' in frame)
+                                || !('x' in frame.frame)
+                                || !('y' in frame.frame)
+                                || !('w' in frame.frame)
+                                || !('h' in frame.frame)
+                                || !('rotated' in frame)
+                                || !('trimmed' in frame)
+                                || !('spriteSourceSize' in frame)
+                                || !('x' in frame.spriteSourceSize)
+                                || !('y' in frame.spriteSourceSize)
+                                || !('w' in frame.spriteSourceSize)
+                                || !('h' in frame.spriteSourceSize)
+                                || !('sourceSize' in frame)
+                                || !('w' in frame.sourceSize)
+                                || !('h' in frame.sourceSize)
+                            )
+                                return false;
+                        }
+                        return true;
+                    };
+                    if (!isPixi(json)) return null;
+                    let ret = {};
+                    ret.filename = json.meta.image;
+                    ret.frames = {};
+                    for (let framename in json.frames) {
+                        if (!json.frames.hasOwnProperty(framename)) continue;
+                        let frame = json.frames[framename];
+                        ret.frames[framename] = {
+                            x: frame.frame.x,
+                            y: frame.frame.y,
+                            w: frame.frame.w,
+                            h: frame.frame.h,
+                            offX: frame.spriteSourceSize.x,
+                            offY: frame.spriteSourceSize.y,
+                            sourceW: frame.sourceSize.w,
+                            sourceH: frame.sourceSize.h
+                        }
+                    }
+                    return ret;
+                };
+                const dbParser = function(json) {
+                    const isDB = function(json) {
+                        if (!('imagePath' in json) || !('name' in json) || !('SubTexture' in json)) return false;
+                        return true;
+                    };
+                    if (!isDB(json)) return null;
+                    let ret = {};
+                    ret.filename = json.imagePath;
+                    ret.frames = {};
+                    json.SubTexture.forEach(frame => {
+                        ret.frames[frame.name] = {
+                            x: frame.x,
+                            y: frame.y,
+                            w: frame.width,
+                            h: frame.height,
+                            offX: 'frameX' in frame ? -frame.frameX : 0,
+                            offY: 'frameY' in frame ? -frame.frameY : 0,
+                            sourceW: 'frameWidth' in frame ? frame.frameWidth : frame.width,
+                            sourceH: 'frameHeight' in frame ? frame.frameHeight : frame.height
+                        }
+                    });
+                    return ret;
+                };
+
+                let parsers = [egretParser, pixiParser, dbParser];
+
+                let data;
+                for (let i = 0; i < parsers.length; ++i) {
+                    if (data = parsers[i](json))
+                        break;
+                }
+
+                if (!data) return rej('unknown file format: ' + f.name);
+
+                let spriteSheet = spriteSheets[data.filename] = {};
+
+                let file = loadedImages[data.filename];
+
+                let img = new Image();
+                img.src = file;
+                img.addEventListener('load', () => {
+                    var div = document.createElement('div');
+                    div.classList.add('atlas');
+                    div.style.width = img.width + 'px';
+                    div.style.height = img.height + 'px';
+                    previewDiv.appendChild(div);
+
+                    for (var framename in data.frames) {
+                        if (!data.frames.hasOwnProperty(framename)) continue;
+                        let frame = data.frames[framename];
+                        if (frame.rotate || frame.rotated) console.warn('rotated frames are not supported yet');
+                        var canvas = document.createElement('canvas');
+                        div.appendChild(canvas);
+
+                        canvas.style.top = frame.y + 'px';
+                        canvas.style.left = frame.x + 'px';
+                        canvas.style.marginTop = -frame.offY + 'px';
+                        canvas.style.marginLeft = -frame.offX + 'px';
+
+                        var context = canvas.getContext('2d');
+                        canvas.width = frame.sourceW;
+                        canvas.height = frame.sourceH;
+
+                        canvas.setAttribute('data-frame_name', framename);
+                        context.drawImage(img, frame.x, frame.y, frame.w, frame.h, frame.offX, frame.offY, frame.w, frame.h);
+
+                        spriteSheet[framename] = canvas;
+                    }
+
+                    res();
                 });
-            }
-            //replace all images with data
-            var spriteSheet = new createjs.SpriteSheet(json);
-            spriteSheets[fileName(f.name)] = spriteSheet;
-
-            if (callback) {
-                callback(f);
-            }
-
+            })
+                .catch(console.warn)
+                .then(() => {
+                    if (callback) {
+                        callback(f);
+                    }
+                })
         };
 
         // Read in the image file as a data URL.
@@ -217,6 +344,7 @@ function main() {
         });
 
     }
+
     document.getElementById('files').addEventListener('change', handleFileSelect, false);
 }
 
