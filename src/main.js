@@ -8,17 +8,20 @@ function main() {
         }
     };
 
-    var log = function(data) {
-        document.getElementById('list').innerHTML += "<br/>" + data;
-    };
-    var zipDownload = true;
-    var alternateDownloader = true;
+    let logElement = document.getElementById('list');
+
+    function log(...args) {
+        logElement.innerHTML += "<br/>" + args.join(' ');
+    }
+
+    const zipDownload = true;
+    const alternateDownloader = true;
 
     function fileName(path) {
         return path.substr(0, path.lastIndexOf('.')) || path
     }
 
-    var button = document.getElementById("downloadButton");
+    let button = document.getElementById("downloadButton");
     button.onclick = function(event) {
         if (zipDownload) {
             var zip = new JSZip();
@@ -76,32 +79,20 @@ function main() {
         }
     };
 
-    var jsons = [];
-    var loadedImages = {};
-    var spriteSheets = {};
+    let loadedImages = {};
+    let spriteSheets = {};
 
-    var readJSONS = function(jsons, callback) {
-        var callbacks = jsons.length;
-        var totalCallback = function(f) {
-            log("done " + f.name);
-            if (!--callbacks) {
-                if (callback) {
-                    callback();
-                }
-            }
-        };
-        jsons.forEach(function(json) {
-            log("loading " + json.name);
-            readJSON(json, totalCallback);
-        })
-    };
-    var readJSON = function(f, callback) {
-        var reader = new FileReader();
+    function getImage(name) {
+        name = fileName(name);
+        return loadedImages[name] = loadedImages[name] || new Image();
+    }
+
+    function readJSON(f, callback) {
+        let reader = new FileReader();
 
         // Closure to capture the file information.
         reader.onload = function(e) {
-            var json = JSON.parse(e.target.result);
-            jsons.push(json);
+            let json = JSON.parse(e.target.result);
 
             new Promise((res, rej) => {
                 const egretParser = function(json) {
@@ -237,12 +228,9 @@ function main() {
 
                 if (!data) return rej('unknown file format: ' + f.name);
 
-                let spriteSheet = spriteSheets[data.filename] = {};
+                let spriteSheet = spriteSheets[f.name] = {};
 
-                let file = loadedImages[data.filename];
-
-                let img = new Image();
-                img.src = file;
+                let img = getImage(data.filename);
                 img.addEventListener('load', () => {
                     var div = document.createElement('div');
                     div.classList.add('atlas');
@@ -263,6 +251,10 @@ function main() {
                         canvas.style.marginLeft = -frame.offX + 'px';
 
                         var context = canvas.getContext('2d');
+                        context.mozImageSmoothingEnabled = false;
+                        context.webkitImageSmoothingEnabled = false;
+                        context.msImageSmoothingEnabled = false;
+                        context.imageSmoothingEnabled = false;
                         canvas.width = frame.sourceW;
                         canvas.height = frame.sourceH;
 
@@ -285,28 +277,15 @@ function main() {
 
         // Read in the image file as a data URL.
         reader.readAsText(f);
-    };
-    var readImages = function(images, callback) {
-        var callbacks = images.length;
-        var totalCallback = function(f) {
-            log("done " + f.name);
-            if (!--callbacks) {
-                if (callback) {
-                    callback();
-                }
-            }
-        };
-        images.forEach(function(image) {
-            log("loading " + image.name);
-            readImage(image, totalCallback);
-        })
-    };
-    var readImage = function(f, callback) {
-        var reader = new FileReader();
+    }
+
+    function readImage(f, callback) {
+        let reader = new FileReader();
 
         // Closure to capture the file information.
         reader.onload = function(e) {
-            loadedImages[f.name] = e.target.result;
+            let img = getImage(f.name);
+            img.src = e.target.result;
             if (callback) {
                 callback(f);
             }
@@ -314,35 +293,33 @@ function main() {
 
         // Read in the image file as a data URL.
         reader.readAsDataURL(f);
-    };
+    }
 
     function handleFileSelect(evt) {
         document.getElementById('list').innerHTML = "";
-        jsons = [];
         loadedImages = {};
         spriteSheets = {};
 
-        var files = evt.target.files; // FileList object
+        let files = evt.target.files; // FileList object
+
+        let handlers = {
+            'image/png': readImage,
+            'image/jpeg': readImage,
+            'image/webp': readImage,
+            'application/json': readJSON
+        };
 
         // files is a FileList of File objects. List some properties.
-        var output = [];
-        var localJSONS = [];
-        var localImages = [];
-        for (var i = 0, f; f = files[i]; i++) {
-            if (f.type === "image/png" || f.type === "image/jpeg") {
-                localImages.push(f);
+        for (let i = 0, f; f = files[i]; i++) {
+            if (handlers[f.type]) {
+                handlers[f.type](f);
+            } else {
+                log(f.name + ': ' + 'unknown file.type' + f.type)
             }
-            else if (f.type === "application/json") {
-                localJSONS.push(f);
-            }
-            output.push('<li><strong>', escape(f.name), '</strong> (', f.type || 'n/a', ') - ',
+            log('<li><strong>', escape(f.name), '</strong> (', f.type || 'n/a', ') - ',
                 f.size, ' bytes, last modified: ',
                 f.lastModifiedDate.toLocaleDateString(), '</li>');
         }
-        readImages(localImages, function() {
-            readJSONS(localJSONS);
-        });
-
     }
 
     document.getElementById('files').addEventListener('change', handleFileSelect, false);
