@@ -217,12 +217,51 @@ function main() {
                     });
                     return ret;
                 };
+                const egretMCParser = function(json, jsonName) {
+                    const isEgretMC = function(json) {
+                        if (!json.mc) return false;
+                        return true;
+                    };
+                    if (!isEgretMC(json)) return null;
+                    let ret = {};
+                    ret.filename = jsonName.replace(/\.\w+$/, '.png');
+                    ret.frames = {};
+                    for (let mc in json.mc) {
+                        if (!json.mc.hasOwnProperty(mc) || mc === 'res') continue;
+                        let maxW = 0;
+                        let maxH = 0;
+                        json.mc[mc].frames.forEach((frame, i) => {
+                            let res = json.res[frame.res];
+                            maxW = Math.max(maxW, res.w - frame.x * 2);
+                            maxH = Math.max(maxH, res.h - frame.y * 2);
+                        });
 
-                let parsers = [egretParser, pixiParser, dbParser];
+                        // get frames count to create template jsonname/0000.png
+                        let numberTemplate = String(json.mc[mc].frames.length - 1).replace(/\d/g, '0') + '0';
+
+                        json.mc[mc].frames.forEach((frame, i) => {
+                            let res = json.res[frame.res];
+                            let frameNumber = (numberTemplate + i).slice(-numberTemplate.length);
+                            ret.frames[`${mc}/${frameNumber}`] = {
+                                x: res.x,
+                                y: res.y,
+                                w: res.w,
+                                h: res.h,
+                                offX: (maxW - res.w) / 2,
+                                offY: (maxH - res.h) / 2,
+                                sourceW: maxW,
+                                sourceH: maxH
+                            }
+                        });
+                    }
+                    return ret;
+                };
+
+                let parsers = [egretParser, pixiParser, dbParser, egretMCParser];
 
                 let data;
                 for (let i = 0; i < parsers.length; ++i) {
-                    if (data = parsers[i](json))
+                    if (data = parsers[i](json, f.name))
                         break;
                 }
 
